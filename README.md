@@ -109,3 +109,63 @@ fn uf(r: regist) void {
     }
 }
 ```
+
+### Add - Adding two values
+
+![](https://www.andreinc.net/assets/images/2021-12-01-writing-a-simple-vm-in-less-than-125-lines-of-c/add.drawio.png)
+
+![](https://www.andreinc.net/assets/images/2021-12-01-writing-a-simple-vm-in-less-than-125-lines-of-c/add2.drawio.png)
+
+通过图片我们可以看出有两个版本的`add`，通过第五个bit位标识不同。
+
+`add1` 将`SR1`和`SR2`的值加起来，然后存至`DR1`寄存器
+
+`add2` 将 `IMM5`和`SR1`加起来，存至`DR1`寄存器。
+
+`IMM5`寄存器是一个5位的正负数。最重要的bit是符号位。在实现代码的时候我们需要考虑到这点。我们需要写一个函数一个函数扩展符号让它和16bits形式兼容。下面的函数实际上是转换成16bit有符号格式。
+
+```zig
+inline fn IMM(i: u16) u16 {
+    return i & 0x1F;
+}
+
+inline fn SEXTIMM(i: u16) u16 {
+    return sext(IMM(i), 5);
+}
+
+fn sext(n: u16, b: comptime_int) u16 {
+    return 
+        if ((n >> (b - 1) & 1) > 0)
+             0 | 0xFFFF << b)
+        else n;
+}
+```
+
+
+下面的方法是一个提取`add`第5个bit位的值
+```zig
+inline fn FIMM(i: u16) u16 {
+    return i >> 5 & 1;
+}
+```
+
+我们来分析下提取过程
+- 首先是将i右移5bits
+- 将最后一bit和1做`&`操作
+
+![](https://www.andreinc.net/assets/images/2021-12-01-writing-a-simple-vm-in-less-than-125-lines-of-c/fimm.drawio.png)
+
+### and - Bitwise logical AND
+
+### ld - Load RPC + offset
+
+![](https://www.andreinc.net/assets/images/2021-12-01-writing-a-simple-vm-in-less-than-125-lines-of-c/ldexp.drawio.png)
+
+该指令从主内存加载数据到目的寄存器，获取到内存位置的数据后作为偏移值加到`RPC`寄存器中.`ld`并不会修改`RPC`的值，仅仅是引用它。
+
+![](https://www.andreinc.net/assets/images/2021-12-01-writing-a-simple-vm-in-less-than-125-lines-of-c/ldexp.drawio.png)
+
+
+
+![](https://www.andreinc.net/assets/images/2021-12-01-writing-a-simple-vm-in-less-than-125-lines-of-c/ld.drawio.png)
+

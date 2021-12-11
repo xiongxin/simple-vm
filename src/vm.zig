@@ -2,12 +2,32 @@ const std = @import("std");
 
 const NOPS = 16; // number of instructions
 
+////////处理寄存器的函数
 inline fn OPC(i: u16) u16 {
     return i >> 12;
 }
 
 inline fn FCND(i: u16) u16 {
-    return (i >> 9) & 0x7;
+    return i >> 9 & 0x7;
+}
+
+// Gets the 5th bit of i
+// We shift to the right with 5 bits so we can have bit on the last position
+inline fn FIMM(i: u16) u16 {
+    return i >> 5 & 1;
+}
+
+// Get DR
+inline fn DR(i: u16) u16 {
+    return i >> 9 & 0x7;
+}
+
+inline fn SR1(i: u16) u16 {
+    return i >> 6 & 0x7;
+}
+
+inline fn SR2(i: u16) u16 {
+    return i & 0x7;
 }
 
 inline fn IMM(i: u16) u16 {
@@ -15,7 +35,7 @@ inline fn IMM(i: u16) u16 {
 }
 
 inline fn SEXTIMM(i: u16) u16 {
-    return sext(i & 0x3f, 6);
+    return sext(IMM(i), 5);
 }
 
 /// As a convention, we should start loading programs
@@ -23,10 +43,6 @@ inline fn SEXTIMM(i: u16) u16 {
 const PC_START = 0x3000;
 /// MAIN MEMOERY
 var mem: [std.math.maxInt(u16)]u16 = undefined;
-
-/// OpCode functions
-const op_ex_f = fn (i: u16) void;
-const op_ex = [NOPS]op_ex_f{br};
 
 /// Registers Types
 /// R0 is a general-purpose register
@@ -48,19 +64,13 @@ var reg: [@enumToInt(regist.RCNT)]u16 = undefined;
 const flags = enum(u8) { FP = 1 << 0, FZ = 1 << 1, FN = 1 << 2 };
 
 /// RCND赋值操作
-fn uf(r: regist) void {
-    if (reg[@enumToInt(r)] == 0) {
+fn uf(r: u16) void {
+    if (reg[r] == 0) {
         reg[@enumToInt(regist.RCND)] = @enumToInt(flags.FZ); // the value in r is zero
-    } else if ((reg[@enumToInt(r)] >> 15) > 0) {
+    } else if ((reg[r] >> 15) > 0) {
         reg[@enumToInt(regist.RCND)] = @enumToInt(flags.FN); // the value in r is z negative number
     } else {
         reg[@enumToInt(regist.RCND)] = @enumToInt(flags.FP); // the value in r is a positive number
-    }
-}
-
-fn br(i: u16) void {
-    if ((reg[@enumToInt(regist.RCND)] & FCND(i)) > 0) {
-        reg[@enumToInt(regist.RPC)] += 1;
     }
 }
 
@@ -74,8 +84,37 @@ inline fn mw(address: u16, val: u16) void {
     mem[address] = val;
 }
 
+/// OpCode functions
+const op_ex_f = fn (i: u16) void;
+fn add(i: u16) void {
+    reg[DR(i)] = reg[SR1(i)] +
+        // If the 5th bit is 1
+        // we sign extend IMM5 and we add it to SR1 (add2)
+        // else we add the value of SR2 to SR1 (add1)
+        if (FIMM(i) > 0) SEXTIMM(i) else reg[SR2(i)];
+
+    uf(DR(i));
+}
+
+fn and_(i: u16) void {
+    reg[DR(i)] = reg[SR1(i)] &
+        // If the 5th bit is 1
+        // we sign extend IMM5 and we add it to SR1 (add2)
+        // else we add the value of SR2 to SR1 (add1)
+        (if (FIMM(i) > 0) SEXTIMM(i) else reg[SR2(i)]);
+
+    uf(DR(i));
+}
+
+fn br(i: u16) void {
+    if ((reg[@enumToInt(regist.RCND)] & FCND(i)) > 0) {
+        reg[@enumToInt(regist.RPC)] += 1;
+    }
+}
+const op_ex = [NOPS]op_ex_f{ br, add };
+
 fn sext(n: u16, b: comptime_int) u16 {
-    return if ((n >> (b - 1) & 1) > 0) 0 | (0xFFFF << b) else n;
+    return if ((n >> (b - 1) & 1) > 0) n | (0xFFFF << b) else n;
 }
 
 //////////////////////////////////////////////
